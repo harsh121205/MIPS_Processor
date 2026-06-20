@@ -60,43 +60,39 @@ module Processor(
 
     // --- Decode Instruction (Combinational in Cycle 1) ---
     assign opcode = ins[31:26];
-    assign src1_addr = ins[25:21]; // rs
-    assign src2_addr = ins[20:16]; // rt
+    assign src1_addr = ins[25:21]; 
+    assign src2_addr = ins[20:16]; 
     assign dest_addr = (opcode == `OP_REG) ? ins[15:11] : ins[20:16]; 
     assign shift_amount = ins[10:6];
     assign func = ins[5:0];
     assign imm = ins[15:0];
 
-    // Extend the immediate value
     wire [31:0] sign_ext_imm = {{16{imm[15]}}, imm}; 
     wire [31:0] zero_ext_imm = {16'b0, imm};         
     
-    // Mux for the ALU's second input (Evaluated in Cycle 1)
     wire [31:0] alu_src2 = (opcode == `OP_REG) ? src2 : 
                            ((opcode == `OP_ANDI) || (opcode == `OP_ORI) || (opcode == `OP_XORI)) ? zero_ext_imm : 
                            sign_ext_imm;
 
     // --- Module Instantiations ---
     
-    // Register File Reads in Cycle 1, Writes in Cycle 3
     RegisterFile rf (
         src1_addr, 
         src2_addr, 
         src1, 
         src2, 
-        dest_addr_reg,     // From Cycle 1 register
-        dest_data_reg,     // From Cycle 2 register
-        dest_valid_reg,    // From Cycle 2 register
+        dest_addr_reg,     
+        dest_data_reg,     
+        dest_valid_reg,    
         clk
     );
 
-    // ALU Executes in Cycle 2 based purely on registered inputs
     ALU alu (
-        src1_reg,          // Registered!
-        alu_src2_reg,      // Registered!
-        shift_amount_reg,  // Registered!
-        opcode_reg,        // Registered!
-        func_reg,          // Registered!
+        src1_reg,          
+        alu_src2_reg,      
+        shift_amount_reg,  
+        opcode_reg,        
+        func_reg,          
         dest_data,         
         dest_data_valid    
     );
@@ -116,7 +112,6 @@ module Processor(
                 S_FETCH_READ: begin
                     fetched <= 1'b1;
                     if (!halt_reg) begin
-                        // Load Cycle 1 -> Cycle 2 inter-stage registers
                         opcode_reg <= opcode;
                         func_reg <= func;
                         shift_amount_reg <= shift_amount;
@@ -130,11 +125,8 @@ module Processor(
 
                 S_EXECUTE: begin
                     if (!halt_reg) begin
-                        // Load Cycle 2 -> Cycle 3 inter-stage registers
                         dest_data_reg <= dest_data;
                         dest_valid_reg <= dest_data_valid;
-                        
-                        // Determine Halt combinationally in the execute stage
                         if ((opcode_reg == `OP_REG) && (func_reg == `FUNC_SYSCALL) && (src1_reg == `SYS_exit)) begin
                             halt_reg <= 1'b1;
                         end
@@ -144,7 +136,6 @@ module Processor(
                 end
 
                 S_WRITEBACK: begin
-                    // Pulse write enable off immediately after this cycle
                     dest_valid_reg <= 1'b0; 
 
                     if (!halt_reg) begin
@@ -156,13 +147,11 @@ module Processor(
         end
     end
 
-    // --- I/O Syscall Logic (Negedge) ---
-    // Moved to the execute cycle (Cycle 2) as required by Milestone 3
+
     always @(negedge clk) begin
         if (state == S_EXECUTE) begin
             if ((opcode_reg == `OP_REG) && (func_reg == `FUNC_SYSCALL) && (src1_reg == `SYS_write)) begin
                 io_reg_index <= io_reg_index + 1;
-                // alu_src2_reg holds the value of src2 (which is $rt) for OP_REG instructions
                 io_reg[io_reg_index] <= alu_src2_reg; 
             end
         end
